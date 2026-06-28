@@ -6,6 +6,8 @@ import '../models/history_item.dart';
 import '../services/history_service.dart';
 import '../services/scanner_service.dart';
 
+import '../main.dart'; // Import to access activeTabNotifier
+
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -27,13 +29,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.initState();
     _loadHistory();
     _searchController.addListener(_onSearchChanged);
+    activeTabNotifier.addListener(_onTabChanged);
   }
 
   @override
   void dispose() {
+    activeTabNotifier.removeListener(_onTabChanged);
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (activeTabNotifier.value == 2) {
+      _loadHistory();
+    }
   }
 
   Future<void> _loadHistory() async {

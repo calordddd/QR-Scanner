@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'package:permission_handler/permission_handler.dart';
+
 class GeneratorService {
   /// Captures the widget wrapped in a RepaintBoundary as PNG bytes
   Future<Uint8List?> capturePng(GlobalKey qrKey) async {
@@ -24,20 +26,36 @@ class GeneratorService {
     }
   }
 
-  /// Saves the QR code image to the app documents directory
+  /// Saves the QR code image to the public Downloads folder (Android) or documents directory (iOS)
   Future<String?> saveQrToDevice(GlobalKey qrKey, String filename) async {
     final bytes = await capturePng(qrKey);
     if (bytes == null) return null;
 
     try {
-      // Find app documents directory or external storage directory
       Directory? directory;
       if (Platform.isAndroid) {
-        // Try getting external storage directory for user access, fallback to standard docs
-        directory = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+        // Request storage permission
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          // If denied, we can still try to write or fallback to app documents
+          if (kDebugMode) {
+            print('Storage permission not granted. Attempting download path anyway.');
+          }
+        }
+        
+        // Standard Android public Download directory
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = Directory('/sdcard/Download');
+        }
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
       } else {
         directory = await getApplicationDocumentsDirectory();
       }
+
+      if (directory == null) return null;
 
       final file = File('${directory.path}/$filename.png');
       await file.writeAsBytes(bytes);

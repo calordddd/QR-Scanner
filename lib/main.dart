@@ -8,6 +8,9 @@ import 'themes/theme_manager.dart';
 // Global theme manager instance to preserve state without Provider overhead
 final ThemeManager themeManager = ThemeManager();
 
+// Global tab notifier to notify screens of active tab changes
+final ValueNotifier<int> activeTabNotifier = ValueNotifier<int>(0);
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -97,6 +100,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           setState(() {
             _currentIndex = index;
           });
+          activeTabNotifier.value = index; // Notify tab change
         },
         destinations: const [
           NavigationDestination(
