@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import '../services/qr_service.dart';
+import 'settings_screen.dart';
+import '../services/scanner_service.dart';
 import '../widgets/scanner_overlay.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -12,7 +13,7 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen>
     with WidgetsBindingObserver {
-  final QrService _qrService = const QrService();
+  final ScannerService _scannerService = ScannerService();
   MobileScannerController? _controller;
 
   bool _isProcessing = false;
@@ -41,16 +42,11 @@ class _ScannerScreenState extends State<ScannerScreen>
 
     switch (state) {
       case AppLifecycleState.resumed:
-        // Only restart if we have permission — avoids conflicts with
-        // the permission dialog lifecycle transitions.
         if (controller.value.hasCameraPermission && !_isProcessing) {
           controller.start();
         }
         break;
       case AppLifecycleState.paused:
-        // Only stop on full pause, NOT on inactive.
-        // The permission dialog triggers inactive, and stopping there
-        // prevents the camera from ever starting after permission is granted.
         controller.stop();
         break;
       default:
@@ -67,15 +63,12 @@ class _ScannerScreenState extends State<ScannerScreen>
   }
 
   Future<void> _onBarcodeDetected(BarcodeCapture capture) async {
-    // Prevent concurrent processing
     if (_isProcessing) return;
 
     final barcode = capture.barcodes.firstOrNull;
     if (barcode == null || barcode.rawValue == null) return;
 
     final value = barcode.rawValue!;
-
-    // Prevent duplicate scans of the same value
     if (value == _lastScannedValue) return;
 
     setState(() {
@@ -83,23 +76,25 @@ class _ScannerScreenState extends State<ScannerScreen>
       _lastScannedValue = value;
     });
 
-    // Stop scanning while processing
     _controller?.stop();
 
-    final result = await _qrService.processScannedValue(value);
+    final result = await _scannerService.processScannedValue(value);
 
     if (_isDisposed || !mounted) return;
 
     switch (result) {
-      case QrResult.launched:
+      case ScannerResult.launched:
         _showSnackBar('Opening URL…', isError: false);
-        // Brief delay before resuming so user sees feedback
         await Future.delayed(const Duration(seconds: 2));
         break;
-      case QrResult.invalidUrl:
+      case ScannerResult.textSaved:
+        _showSnackBar('Text saved to history', isError: false);
+        await Future.delayed(const Duration(seconds: 1));
+        break;
+      case ScannerResult.invalidUrl:
         _showSnackBar('Invalid QR Code');
         break;
-      case QrResult.launchFailed:
+      case ScannerResult.launchFailed:
         _showSnackBar('Could not open URL');
         break;
     }
@@ -108,7 +103,6 @@ class _ScannerScreenState extends State<ScannerScreen>
 
     setState(() {
       _isProcessing = false;
-      // Reset so the user can scan the same code again later
       _lastScannedValue = null;
     });
 
@@ -130,7 +124,6 @@ class _ScannerScreenState extends State<ScannerScreen>
     );
   }
 
-  /// Disposes and recreates the controller to recover from errors.
   void _restartCamera() {
     _controller?.dispose();
     _initController();
@@ -151,11 +144,23 @@ class _ScannerScreenState extends State<ScannerScreen>
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       extendBodyBehindAppBar: false,
       body: Column(
         children: [
-          // Camera preview area
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -185,9 +190,7 @@ class _ScannerScreenState extends State<ScannerScreen>
                               );
                             },
                           ),
-                          // Scanner overlay with viewfinder
                           const ScannerOverlay(),
-                          // Processing indicator
                           if (_isProcessing)
                             Container(
                               color: Colors.black54,
@@ -202,13 +205,12 @@ class _ScannerScreenState extends State<ScannerScreen>
               ),
             ),
           ),
-          // Instruction text
           Padding(
             padding: const EdgeInsets.only(bottom: 48, top: 16),
             child: Text(
               'Point your camera at a QR code',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurface.withAlpha(179),
+                    color: colorScheme.onSurface.withOpacity(0.7),
                   ),
             ),
           ),
@@ -218,7 +220,6 @@ class _ScannerScreenState extends State<ScannerScreen>
   }
 }
 
-/// Shown when the camera encounters an error (permission denied, unavailable, etc.)
 class _CameraErrorView extends StatelessWidget {
   final MobileScannerException error;
   final VoidCallback onRetry;
